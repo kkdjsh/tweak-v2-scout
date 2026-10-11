@@ -25,7 +25,7 @@ static void FindMongo(void) {
     for (uint32_t i=0; i<n; i++) {
         const char *p = _dyld_get_image_name(i);
         if (p && strstr(p, "mongo.dylib")) {
-            const struct mach_header_64 *h = _dyld_get_image_header(i);
+            const struct mach_header_64 *h = (const struct mach_header_64 *)_dyld_get_image_header(i);
             uintptr_t slide = _dyld_get_image_vmaddr_slide(i);
             g_mongoStart = (uintptr_t)h;  // 粗略范围, 用整个 image 页
             uintptr_t maxEnd = 0;
