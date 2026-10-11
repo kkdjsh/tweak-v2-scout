@@ -1,20 +1,19 @@
-// v11 - hook objc_msgSend, 看 handler 里调了什么
+// v12 - hook C 函数 memcmp/strcmp/strncmp
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
-#import <objc/message.h>
 #import <mach-o/dyld.h>
 #import <mach-o/loader.h>
 #import <execinfo.h>
 #import <substrate.h>
 
-static NSString *v11LogPath(void) {
-    return [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] stringByAppendingPathComponent:@"v11_log.txt"];
+static NSString *v12LogPath(void) {
+    return [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] stringByAppendingPathComponent:@"v12_log.txt"];
 }
-static void v11Log(NSString *fmt, ...) {
+static void v12Log(NSString *fmt, ...) {
     va_list ap; va_start(ap, fmt);
     NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap]; va_end(ap);
     NSLog(@"%@", s);
-    NSString *p = v11LogPath();
+    NSString *p = v12LogPath();
     NSFileHandle *h = [NSFileHandle fileHandleForWritingAtPath:p];
     if (!h) { [s writeToFile:p atomically:YES encoding:NSUTF8StringEncoding error:nil]; }
     else { [h seekToEndOfFile]; [h writeData:[[s stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding]]; [h closeFile]; }
@@ -41,7 +40,7 @@ static void FindMongo(void) {
             NSArray *r = @[@(slide), @(maxEnd)];
             if (![g_ranges containsObject:r]) {
                 [g_ranges addObject:r];
-                v11Log(@"[v11] mongo: %p - %p", (void*)slide, (void*)maxEnd);
+                v12Log(@"[v12] mongo: %p - %p", (void*)slide, (void*)maxEnd);
             }
         }
     }
@@ -58,19 +57,35 @@ static BOOL CalledByMongo(void) {
     return NO;
 }
 
-// 原始 objc_msgSend
-static id (*orig_objc_msgSend)(id, SEL, ...) = NULL;
+// 原始函数
+static int (*orig_memcmp)(const void *, const void *, size_t) = NULL;
+static int (*orig_strcmp)(const char *, const char *) = NULL;
+static int (*orig_strncmp)(const char *, const char *, size_t) = NULL;
 
-// 替换的 objc_msgSend
-static id hook_objc_msgSend(id self, SEL _cmd, ...) {
-    if (CalledByMongo()) {
-        const char *sel = sel_getName(_cmd);
-        v11Log(@"[v11] msgSend: [%@ %s]", NSStringFromClass([self class]), sel);
+// hook 实现
+static int hook_memcmp(const void *a, const void *b, size_t n) {
+    int o = orig_memcmp(a, b, n);
+    if (CalledByMongo() && o != 0 && n >= 4 && n <= 128) {
+        v12Log(@"[v12] memcmp n=%zu o=%d -> 0", n, o);
+        return 0;
     }
-    va_list ap; va_start(ap, _cmd);
-    id ret = orig_objc_msgSend(self, _cmd, ap);
-    va_end(ap);
-    return ret;
+    return o;
+}
+static int hook_strcmp(const char *a, const char *b) {
+    int o = orig_strcmp(a, b);
+    if (CalledByMongo() && o != 0) {
+        v12Log(@"[v12] strcmp a=%s b=%s -> 0", a, b);
+        return 0;
+    }
+    return o;
+}
+static int hook_strncmp(const char *a, const char *b, size_t n) {
+    int o = orig_strncmp(a, b, n);
+    if (CalledByMongo() && o != 0 && n >= 4 && n <= 128) {
+        v12Log(@"[v12] strncmp n=%zu -> 0", n);
+        return 0;
+    }
+    return o;
 }
 
 // 自动调确认 handler
@@ -79,7 +94,7 @@ static id hook_objc_msgSend(id self, SEL _cmd, ...) {
     %orig;
     NSString *title = self.title ?: @"";
     if (![title containsString:@"坦克秒"] && ![title containsString:@"授权"]) return;
-    v11Log(@"[v11] 弹窗出现: %@", title);
+    v12Log(@"[v12] 弹窗出现");
     for (UITextField *f in self.textFields) f.text = @"AAAA-BBBB-CCCC-DDDD";
     for (UIAlertAction *a in self.actions) {
         if ([a.title isEqualToString:@"确认"]) {
@@ -89,7 +104,7 @@ static id hook_objc_msgSend(id self, SEL _cmd, ...) {
                 typedef void (^blk)(UIAlertAction *);
                 blk h = (blk)handler;
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    v11Log(@"[v11] >>> 调handler");
+                    v12Log(@"[v12] >>> 调handler");
                     h(a);
                 });
             }
@@ -100,6 +115,8 @@ static id hook_objc_msgSend(id self, SEL _cmd, ...) {
 
 %ctor {
     FindMongo();
-    MSHookFunction((void*)objc_msgSend, (void*)hook_objc_msgSend, (void**)&orig_objc_msgSend);
-    v11Log(@"[v11] objc_msgSend hooked");
+    MSHookFunction((void*)memcmp, (void*)hook_memcmp, (void**)&orig_memcmp);
+    MSHookFunction((void*)strcmp, (void*)hook_strcmp, (void**)&orig_strcmp);
+    MSHookFunction((void*)strncmp, (void*)hook_strncmp, (void**)&orig_strncmp);
+    v12Log(@"[v12] memcmp/strcmp hooked");
 }
