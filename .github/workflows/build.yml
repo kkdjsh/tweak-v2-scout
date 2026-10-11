@@ -5,28 +5,32 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+env:
+  THEOS: /Users/runner/theos
+
 jobs:
   build:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Theos + toolchain + sdk
+      - name: Show env
         run: |
-          sudo git clone --recursive https://github.com/theos/theos.git /opt/theos
-          sudo git clone https://github.com/theos/toolchain.git /opt/theos/toolchain
-          sudo git clone https://github.com/theos/sdks.git /opt/theos/sdks
-          ls /opt/theos
-          ls /opt/theos/toolchain
-          ls /opt/theos/sdks
+          xcodebuild -version
+          xcode-select -p
+
+      - name: Clone theos
+        run: |
+          git clone --recursive https://github.com/theos/theos.git $THEOS
+          ls $THEOS
 
       - name: Build
         run: |
-          { make package THEOS=/opt/theos FINALPACKAGE=1 ; } 2>&1 | tee build.log
+          { make package FINALPACKAGE=1 THEOS=/Users/runner/theos ; } 2>&1 | tee build.log
           exit ${PIPESTATUS[0]}
         shell: bash
 
-      - name: Upload build log
+      - name: Upload log
         if: always()
         uses: actions/upload-artifact@v4
         with:
