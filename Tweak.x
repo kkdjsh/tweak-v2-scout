@@ -41,8 +41,8 @@ static void FindAndPatch(void) {
             v9Log(@"[v9] orig insn: 0x%x 0x%x", orig[0], orig[1]);
 
             // 修改内存保护为可写
-            kern_return_t kr = mach_vm_protect(mach_task_self(),
-                (mach_vm_address_t)patchAddr, 16, FALSE,
+            kern_return_t kr = vm_protect(mach_task_self(),
+                (vm_address_t)patchAddr, 16, FALSE,
                 VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
             v9Log(@"[v9] vm_protect ret: %d", kr);
 
@@ -53,8 +53,8 @@ static void FindAndPatch(void) {
             memcpy((void*)patchAddr, patch, 8);
 
             // 恢复保护
-            mach_vm_protect(mach_task_self(),
-                (mach_vm_address_t)patchAddr, 16, FALSE,
+            vm_protect(mach_task_self(),
+                (vm_address_t)patchAddr, 16, FALSE,
                 VM_PROT_READ | VM_PROT_EXECUTE);
 
             v9Log(@"[v9] patched! new insn: 0x%x 0x%x", ((uint32_t*)patchAddr)[0], ((uint32_t*)patchAddr)[1]);
