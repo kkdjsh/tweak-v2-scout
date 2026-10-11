@@ -22,11 +22,10 @@ jobs:
       - name: Clone theos
         run: |
           git clone --recursive https://github.com/theos/theos.git $THEOS
-          ls $THEOS
 
       - name: Build
         run: |
-          { make package FINALPACKAGE=1 THEOS=/Users/runner/theos ; } 2>&1 | tee build.log
+          { make package FINALPACKAGE=1 ; } 2>&1 | tee build.log
           exit ${PIPESTATUS[0]}
         shell: bash
 
