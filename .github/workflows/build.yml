@@ -14,14 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Show env
-        run: |
-          xcodebuild -version
-          xcode-select -p
-
-      - name: Clone theos
+      - name: Install theos + ldid
         run: |
           git clone --recursive https://github.com/theos/theos.git $THEOS
+          brew install ldid
+          which ldid
 
       - name: Build
         run: |
