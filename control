@@ -1,0 +1,8 @@
+Package: com.study.bypass.cardkey.v2
+Name: v2_侦察授权弹窗
+Version: 2.0
+Architecture: iphoneos-arm64
+Description: [课堂实训] 侦察 mango 插件授权弹窗结构与类方法, 为精准绕过做准备
+Maintainer: Study
+Author: Study
+Section: Tweaks
