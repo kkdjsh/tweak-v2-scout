@@ -8,10 +8,10 @@ INSTALL_TARGET_PROCESSES = CrazyRed
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = v2_侦察授权弹窗
+TWEAK_NAME = v2scout
 
-v2_侦察授权弹窗_FILES = Tweak.x
-v2_侦察授权弹窗_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
-v2_侦察授权弹窗_FRAMEWORKS = UIKit Foundation
+v2scout_FILES = Tweak.x
+v2scout_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
+v2scout_FRAMEWORKS = UIKit Foundation
 
 include $(THEOS)/makefiles/tweak.mk
