@@ -1,0 +1,22 @@
+name: Build v2_侦察授权弹窗
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Theos
+        run: |
+          sudo git clone --recursive https://github.com/theos/theos.git /opt/theos
+          sudo xcode-select -s /Applications/Xcode_15.4.app
+      - name: Build
+        run: make package THEOS=/opt/theos FINALPACKAGE=1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v2_侦察授权弹窗_deb
+          path: packages/*.deb
