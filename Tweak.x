@@ -1,4 +1,4 @@
-// v5 - 真绕过: 自动调确认handler + 拦截NSData比对 + 不再dismiss
+// v6 - 侦察 handler 内部到底调了什么
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -6,21 +6,23 @@
 #import <mach-o/loader.h>
 #import <execinfo.h>
 
-static NSString *v5LogPath(void) {
-    return [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] stringByAppendingPathComponent:@"v5_log.txt"];
+static NSString *v6LogPath(void) {
+    return [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] stringByAppendingPathComponent:@"v6_log.txt"];
 }
-static void v5Log(NSString *fmt, ...) {
+static void v6Log(NSString *fmt, ...) {
     va_list ap; va_start(ap, fmt);
     NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap]; va_end(ap);
     NSLog(@"%@", s);
-    NSString *p = v5LogPath();
+    NSString *p = v6LogPath();
     NSFileHandle *h = [NSFileHandle fileHandleForWritingAtPath:p];
     if (!h) { [s writeToFile:p atomically:YES encoding:NSUTF8StringEncoding error:nil]; }
     else { [h seekToEndOfFile]; [h writeData:[[s stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding]]; [h closeFile]; }
 }
 
-static uintptr_t g_mongoStart = 0, g_mongoEnd = 0;
+// 维护所有 mongo.dylib 的地址范围
+static NSMutableArray *g_mongoRanges = nil;
 static void FindMongo(void) {
+    if (!g_mongoRanges) g_mongoRanges = [NSMutableArray new];
     uint32_t n = _dyld_image_count();
     for (uint32_t i=0; i<n; i++) {
         const char *p = _dyld_get_image_name(i);
@@ -36,9 +38,11 @@ static void FindMongo(void) {
                 }
                 lc = (struct load_command *)((uintptr_t)lc + lc->cmdsize);
             }
-            g_mongoStart = slide; g_mongoEnd = maxEnd;
-            v5Log(@"[v5] mongo: %p - %p", (void*)g_mongoStart, (void*)g_mongoEnd);
-            return;
+            NSArray *r = @[@(slide), @(maxEnd)];
+            if (![g_mongoRanges containsObject:r]) {
+                [g_mongoRanges addObject:r];
+                v6Log(@"[v6] mongo range: %p - %p", (void*)slide, (void*)maxEnd);
+            }
         }
     }
 }
@@ -47,65 +51,70 @@ static BOOL CalledByMongo(void) {
     void *callers[12]; int n = backtrace(callers, 12);
     for (int i=0; i<n; i++) {
         uintptr_t pc = (uintptr_t)callers[i];
-        if (pc >= g_mongoStart && pc < g_mongoEnd) return YES;
+        for (NSArray *r in g_mongoRanges) {
+            if (pc >= [r[0] unsignedLongValue] && pc < [r[1] unsignedLongValue]) return YES;
+        }
     }
     return NO;
 }
 
-// hook NSData isEqualToData:
+// hook NSData base64 decode
 %hook NSData
+- (id)initWithBase64EncodedString:(NSString *)s options:(NSDataBase64DecodingOptions)opts {
+    id r = %orig(s, opts);
+    if (CalledByMongo()) {
+        v6Log(@"[v6] base64 decode: input=%@ -> outlen=%lu", s, (unsigned long)r.length);
+    }
+    return r;
+}
 - (BOOL)isEqualToData:(NSData *)other {
     BOOL orig = %orig(other);
-    if (CalledByMongo() && !orig) {
-        v5Log(@"[v5] NSData比对拦截 len=%lu -> YES", (unsigned long)self.length);
-        return YES;
+    if (CalledByMongo()) {
+        v6Log(@"[v6] NSData==: self.len=%lu other.len=%lu orig=%d", (unsigned long)self.length, (unsigned long)other.length, orig);
     }
     return orig;
 }
 %end
 
-// hook NSString isEqualToString: (兜底)
+// hook NSString
 %hook NSString
 - (BOOL)isEqualToString:(NSString *)aString {
     BOOL orig = %orig(aString);
-    if (CalledByMongo() && !orig) {
-        v5Log(@"[v5] NSString比对拦截 self=%@ arg=%@ -> YES", self, aString);
-        return YES;
+    if (CalledByMongo()) {
+        v6Log(@"[v6] NSString==: self=%@ arg=%@ orig=%d", self, aString, orig);
     }
     return orig;
 }
+- (NSData *)dataUsingEncoding:(NSStringEncoding)enc {
+    NSData *r = %orig(enc);
+    if (CalledByMongo()) {
+        v6Log(@"[v6] str->data: self=%@ len=%lu", self, (unsigned long)r.length);
+    }
+    return r;
+}
 %end
 
-// hook UIAlertController, 自动调确认handler
+// hook UIAlertController 自动调确认
 %hook UIAlertController
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
     NSString *title = self.title ?: @"";
     if (![title containsString:@"坦克秒"] && ![title containsString:@"授权"]) return;
-    v5Log(@"[v5] 命中弹窗: %@, 准备自动调确认handler", title);
-
-    // 填码
+    v6Log(@"[v6] 弹窗: %@", title);
     for (UITextField *f in self.textFields) {
         f.text = @"AAAA-BBBB-CCCC-DDDD";
-        v5Log(@"[v5] 填入: %@", f.text);
     }
-
-    // 找确认按钮, 拿 _handler, 直接调用
     for (UIAlertAction *a in self.actions) {
         if ([a.title isEqualToString:@"确认"]) {
-            // 通过 runtime 拿 _handler
             Ivar iv = class_getInstanceVariable([UIAlertAction class], "_handler");
             if (iv) {
                 id handler = object_getIvar(a, iv);
-                v5Log(@"[v5] 确认 handler=%@, 直接调用", handler);
                 typedef void (^blk)(UIAlertAction *);
                 blk h = (blk)handler;
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    v5Log(@"[v5] 调用确认 handler");
+                    v6Log(@"[v6] === 调确认handler ===");
                     h(a);
                 });
-            } else {
-                v5Log(@"[v5] 找不到 _handler ivar");
             }
         }
     }
