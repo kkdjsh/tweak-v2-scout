@@ -63,7 +63,7 @@ static BOOL CalledByMongo(void) {
 - (id)initWithBase64EncodedString:(NSString *)s options:(NSDataBase64DecodingOptions)opts {
     id r = %orig(s, opts);
     if (CalledByMongo()) {
-        v6Log(@"[v6] base64 decode: input=%@ -> outlen=%lu", s, (unsigned long)r.length);
+        v6Log(@"[v6] base64 decode: input=%@ -> outlen=%lu", s, (unsigned long)[(NSData*)r length]);
     }
     return r;
 }
