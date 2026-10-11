@@ -11,17 +11,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Show environment
-        run: |
-          uname -a
-          xcodebuild -version
-          xcode-select -p
-          ls -la
-
-      - name: Install Theos
+      - name: Install Theos + toolchain + sdk
         run: |
           sudo git clone --recursive https://github.com/theos/theos.git /opt/theos
+          sudo git clone https://github.com/theos/toolchain.git /opt/theos/toolchain
+          sudo git clone https://github.com/theos/sdks.git /opt/theos/sdks
           ls /opt/theos
+          ls /opt/theos/toolchain
+          ls /opt/theos/sdks
 
       - name: Build
         run: |
