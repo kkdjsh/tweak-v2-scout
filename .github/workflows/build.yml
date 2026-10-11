@@ -16,17 +16,28 @@ jobs:
           uname -a
           xcodebuild -version
           xcode-select -p
+          ls -la
 
       - name: Install Theos
         run: |
           sudo git clone --recursive https://github.com/theos/theos.git /opt/theos
+          ls /opt/theos
 
       - name: Build
         run: |
-          make package THEOS=/opt/theos FINALPACKAGE=1
+          { make package THEOS=/opt/theos FINALPACKAGE=1 ; } 2>&1 | tee build.log
+          exit ${PIPESTATUS[0]}
         shell: bash
 
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2scout_build_log
+          path: build.log
+
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: v2scout_deb
           path: packages/*.deb
